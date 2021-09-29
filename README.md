@@ -13,4 +13,4 @@ Results of the project can be found as a report in **Stat154_Final_Report.pdf**
 
 The report section is from pages 1 to 6  
  
-The code use is also provided in the report from pages 7 to 59. This is a combination of R and python code
+Code is also provided in the report from pages 7 to 59. This is a combination of R and python code.
