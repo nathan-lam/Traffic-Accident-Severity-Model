@@ -1,0 +1,366 @@
+---
+title: "Project Stat 154"
+author: "Nathan Lam"
+date: "4/12/2021"
+output: pdf_document
+---
+
+```{r, eval=F, echo=T}
+library(dplyr) #data frame manipulation
+library(glmnet) #logistic + penalized methods
+library(caret) # cross validation
+library(leaps) #cross validation
+library(nnet) #multinomial logistic regression
+library(MASS) #LDA
+library(penalizedLDA)
+```
+
+
+
+```{r importing data, eval=F, echo=T}
+start1 <- proc.time()
+train <- read.csv('train.csv')
+end1 <- proc.time()
+print(end1-start1)
+
+start2 <- proc.time()
+train <- read.csv('train.csv')
+end2 <- proc.time()
+print(end2-start2)
+
+
+#remove_train <- c(-1:-3,-6,-9:-14,-19:-23,-28,-34,-40,-43,-45)
+#remove_test <- c(-1:-3,-5,-8:-13,-18:-22,-27,-33,-39,-42,-44)
+remove <- c(-1:-4,-12:-14,-19:-23) #include more variables
+Severity <- train$Severity
+
+start3 <- proc.time()
+train_set <- train[,remove]
+end3 <- proc.time()
+print(end3-start3)
+
+
+train_set <- train[,c(-1,-2)]
+
+
+head(train_cleaned3)
+```
+
+
+```{r, eval=F, echo=T}
+#clean raw train, test
+start_clean <- proc.time()
+
+for(i in 1:ncol(train_set)){if(any(is.na(train_set[,i]))){print(paste(i,names[i]))}}
+#remove na in numeric columns
+has_na <- c(5,6,12:16,18,19)
+for(n in has_na){
+  train_set[is.na(train_set[,n]),n] <- mean(train_set[,n],na.rm=T)}
+train_set$Humidity...[is.na(train_set$Humidity...)] <- round(mean(train_set$Humidity...,na.rm=T))
+
+
+#encoding R-L as 1-0
+train_set$Side[train_set$Side=='R'] <- 1
+train_set$Side[train_set$Side=='L'] <- 0
+
+
+#encoding things in general
+names <- colnames(train_set)
+for(i in 1:ncol(train_set)){print(paste(i,names[i],length(unique(train_set[,i]))/nrow(train_set)))}
+#this for loop has takes almost an hour
+for(m in 9:11){
+  uniq <- unique(train_set[,m])
+  for(h in 1:length(uniq)){
+    if(h %% 100 == 0){
+      print(uniq[h])
+    }
+    train_set[train_set[,m]==uniq[h],m] <- h
+  }
+}
+
+
+
+#encoding T-F as 1-0
+for(k in 21:33){
+  train_set[train_set[,k]=='True',k] <- 1
+  train_set[train_set[,k]=='False',k] <- 0
+}
+
+
+#Encoding day-night to 1-0
+for(i in 34:37){
+train_set[train_set[,i]=='',i] <- 1
+train_set[train_set[,i]=='Day',i] <- 1
+train_set[train_set[,i]=='Night',i] <- 0
+}
+
+
+#removing redundancies
+train_set$Wind_Direction[train_set$Wind_Direction =="North"] <- "N"
+train_set$Wind_Direction[train_set$Wind_Direction =="South"] <- "S"
+train_set$Wind_Direction[train_set$Wind_Direction =="East"] <- "E"
+train_set$Wind_Direction[train_set$Wind_Direction =="West"] <- "W"
+train_set$Wind_Direction[train_set$Wind_Direction =="Calm"] <- "CALM"
+train_set$Wind_Direction[train_set$Wind_Direction ==""] <- "CALM"
+train_set$Wind_Direction[train_set$Wind_Direction =="Variable"] <- "VAR"
+
+
+#encoding Wind direction as numbers
+wind_dir <- unique(train_set$Wind_Direction)
+for(h in 1:length(wind_dir)){
+  train_set$Wind_Direction[train_set$Wind_Direction==wind_dir[h]] <- h
+}
+
+
+#encoding wind condition
+wind_cond <- unique(train_set$Weather_Condition)
+for(h in 1:length(wind_cond)){
+  train_set$Weather_Condition[train_set$Weather_Condition==wind_cond[h]] <- h
+}
+
+
+end_clean <- proc.time()
+print(end_clean-start_clean)
+
+
+
+Year <- substr(train_set$Start_Time,1,4)
+Month <- substr(train_set$Start_Time,6,7)
+Day <- substr(train_set$Start_Time,9,10)
+Hour <- substr(train_set$Start_Time,12,13)
+
+
+#names <- colnames(train_set)
+#for(i in 1:ncol(train_set)){
+#  print(paste(i,names[i],any(is.na(train_set[,i]))))
+#}
+
+train_cleaned2 <- cbind(train_set[,c(-1,-2,-5,-6)],Year,Month,Day,Hour)
+train_cleaned3 <- cbind(Severity,train_cleaned2)
+
+write.csv(train_cleaned3,"train_cleaned2.csv")
+
+
+
+```
+
+
+
+  
+```{r, eval=F, echo=T}
+#using penalized methods
+#ran out of memory to run
+
+sub_set <- sample(1:nrow(train_cleaned3),nrow(train_cleaned3)*0.7)
+sub_train <- train_cleaned3[sub_set,]
+sub_test <- train_cleaned3[-sub_set,]
+
+
+lasso.cv <- cv.glmnet(as.matrix(sub_train),as.matrix(Severity[sub_set]), 
+                      type.measure="mse", family="gaussian", alpha=1,nfold=5,trace.it=T)
+
+plot(lasso.cv)
+
+
+lasso <- glmnet(as.matrix(sub_train),as.matrix(Severity[sub_set]), 
+                      type.measure="mse", family="gaussian", alpha=1, 
+                lambda = lasso.cv$lambda.1se)
+
+summary(lasso)
+
+####
+
+lasso.cv <- cv.glmnet(as.matrix(sub_train),as.matrix(Severity[sub_set]), 
+                      type.measure="mse", family="multinomial", alpha=1)
+
+plot(lasso.cv)
+
+
+lasso <- glmnet(as.matrix(sub_train),as.matrix(Severity[sub_set]), 
+                      type.measure="mse", family="multinomial", alpha=1, 
+                lambda = lasso$lambda.1se))
+
+summary(lasso)
+
+```
+
+
+```{r, eval=F, echo=T}
+#########Forward Selection#########
+f_model <- regsubsets(x=as.matrix(sub_train[,c(-1,-2)]),y=as.factor(sub_train[,2]), 
+                      method = "forward", nbest = 1) %>% summary()
+
+#extracting criterion
+f_BIC <- f_model$bic
+f_mallow_Cp <- f_model$cp
+
+#picking best variables
+f_BIC_picked <- f_model$which[which.min(f_BIC),]
+f_cp_picked <- f_model$which[which.min(f_mallow_Cp),]
+
+#printing picked variables
+f_BIC_picked[f_BIC_picked == TRUE]
+f_cp_picked[f_cp_picked == TRUE]
+
+
+#########Backward Selection#########
+b_model <- regsubsets(x=as.matrix(sub_train[,c(-1,-2)]),y=as.matrix(sub_train[,2]), 
+                      method = "backward", nbest = 1) %>% summary()
+
+#extracting criterion
+b_BIC <- b_model$bic
+b_mallow_Cp <- b_model$cp
+
+#picking best variables
+b_BIC_picked <- b_model$which[which.min(b_BIC),]
+b_cp_picked <- b_model$which[which.min(b_mallow_Cp),]
+
+#printing picked variables
+b_BIC_picked[b_BIC_picked == TRUE]
+b_cp_picked[b_cp_picked == TRUE]
+
+```
+
+models selected (y using 60% of data)  
+linear dependencies found  
+f_BIC:       intercept + Start_Lng + county + State + Crossing + Junction + Stop  
++ Traffic_Signal + Year  
+f_mallow_cp: intercept + Start_Lng + county + State + Crossing + Junction + Stop  
++ Traffic_Signal + Year  
+b_BIC:       intercept + city  
+b_mallow_cp: intercept + start_lat + city + county + give_way + year  
+  
+models selected (y using 70% of data)  
+linear dependencies found  
+f_BIC:       intercept + Start_Lng + county + State + Crossing + Junction + Stop  
++ Traffic_Signal + Year + Month  
+f_mallow_cp: intercept + Start_Lng + county + State + Crossing + Junction + Stop  
++ Traffic_Signal + Year + Month  
+b_BIC:       intercept + Start_Lng + county + State + Crossing + Stop + Traffic_Signal  
++ Nautical_Twilight + Year + Month  
+b_mallow_cp: intercept + Start_Lng + county + State + Crossing + Stop + Traffic_Signal  
++ Nautical_Twilight + Year + Month  
+  
+
+```{r, eval=F, echo=T}
+#trying to CV to find RMSE
+tc <- trainControl(method = "cv", number = 5)
+
+model1_cv <- train(as.factor(sub_train[,1]) ~ Start_Lat + City + County + 
+                     Give_Way + No_Exit + Year + Month, 
+                   data = as.data.frame(sub_train),
+                   method="glm",trControl=tc,family="multinomial")
+model1_cv$results[,"RMSE"]
+
+###
+
+model2_cv <- train(as.factor(sub_train[,1]) ~ City, 
+                   data = as.data.frame(sub_train),
+                   method="glm",trControl=tc,family="multinomial")
+model2_cv$results[,"RMSE"]
+
+###
+
+model3_cv <- train(as.factor(sub_train[,1]) ~ Start_Lat + City + County + Give_Way + Year,
+                   data = as.data.frame(sub_train),
+                   method="glm",trControl=tc,family="multinomial")
+model3_cv$results[,"RMSE"]
+
+#could not cross validate
+```
+
+```{r, eval=F, echo=T}
+#not cross validating
+#trained on 60% of the data
+
+features <- c(4,7,8,18,20,24,25,30)
+#model1 <- glmnet(as.matrix(sub_train[,features]),as.matrix(sub_train[,2]), 
+#family="multinomial")
+model1a <- multinom(Severity ~ Start_Lng + County + State + Crossing + Junction + 
+                 Stop + Traffic_Signal + Year,data=sub_train)
+model1_pred <- predict(model1a,newdata=sub_test[,features],"class")
+paste('Model 1 MsE:',mean(model1_pred==sub_test[,2])) 
+
+###
+
+features <- c(3,6,7,19,30)
+#model2 <- glmnet(as.matrix(sub_train[,features]),as.matrix(sub_train[,2]), 
+#type.measure="mse", family="multinomial")
+model2a <- multinom(Severity ~ Start_Lat + City + County + Give_Way + Year,data=sub_train)
+model2_pred <- predict(model2a,newdata=sub_test[,features])
+paste('Model 2 MsE:',mean(model2_pred==sub_test[,2]))
+
+###
+
+features <- c(6,30)
+#model3 <- glmnet(as.matrix(sub_train[,features]),as.matrix(sub_train[,2]), 
+#type.measure="mse", family="multinomial")
+model3a <- multinom(Severity ~ City + Year,data=sub_train)
+model3_pred <- predict(model3a,newx=sub_test[,features])
+paste('Model 3 MsE:',mean(model3_pred==sub_test[,2])) 
+
+
+```
+
+
+```{r, eval=F, echo=T}
+#not cross validating
+#trained on 70% of the data
+
+features <- c(3,6,7,17,19,23,24,29,30)
+#model1 <- glmnet(as.matrix(sub_train[,features]),as.matrix(sub_train[,2]), family="multinomial")
+model1a <- multinom(Severity[sub_set] ~ Start_Lng + County + State + Crossing + Junction + 
+                 Stop + Traffic_Signal + Year + Month,
+                 data=as.data.frame(sub_train2[sub_set,features]))
+model1_pred <- predict(model1a,newdata=sub_train2[-sub_set,features],"class")
+paste('Model 1 MsE:',mean(model1_pred==Severity[-sub_set])) #0.703872714140098 accuracy
+
+
+
+model4 <- lm(Severity[sub_set] ~ Start_Lng + County + State + Crossing + Junction + 
+                 Stop + Traffic_Signal + Year + Month,
+             data=as.data.frame(sub_train2[sub_set,features]))
+model4_pred <- predict(model4,newdata=data.frame(sub_train2[-sub_set,features]))
+paste('Model 4 MsE:',mean(round(model4_pred)==Severity[-sub_set])) #0.696835404586233 accuracy
+
+
+
+LDA_model <- lda(Severity[sub_set] ~ Start_Lng + County + State + Crossing + Junction + 
+                 Stop + Traffic_Signal + Year + Month,
+                 data=data.frame(sub_train2[sub_set,features]))
+LDA_pred <- predict(LDA_model, data.frame(sub_train2[-sub_set,features]))
+paste("LDA accuracy:",mean(LDA_pred$class == Severity[-sub_set])) #0.700576260584091 accuracy
+
+###
+
+features <- c(3,6,7,17,23,24,27,29,30)
+#model2 <- glmnet(as.matrix(sub_train[,features]),as.matrix(sub_train[,2]), 
+#type.measure="mse", family="multinomial")
+model2a <- multinom(Severity[sub_set] ~ Start_Lng + County + State + Crossing + 
+                 Stop + Traffic_Signal + Nautical_Twilight + Year + Month,
+                 data=as.data.frame(sub_train2[sub_set,features]))
+model2a_pred <- predict(model2a,newdata=sub_train2[-sub_set,features])
+paste('Model 2 MsE:',mean(model2a_pred==Severity[-sub_set])) #0.703894090460086 accuracy
+
+
+
+
+model5 <- lm(Severity[sub_set] ~ Start_Lng + County + State + Crossing + 
+                 Stop + Traffic_Signal + Nautical_Twilight + Year + Month,
+             data=as.data.frame(sub_train2[sub_set,features]))
+model5_pred <- predict(model5,newdata=data.frame(sub_train2[-sub_set,features]))
+paste('Model 5 MsE:',mean(round(model5_pred)==Severity[-sub_set])) #0.696765650278905 accuracy
+
+
+
+LDA_model <- lda(Severity[sub_set] ~ Start_Lng + County + State + Crossing + 
+                 Stop + Traffic_Signal + Nautical_Twilight + Year + Month, 
+                 data=data.frame(sub_train2[sub_set,features]))
+LDA_pred <- predict(LDA_model, data.frame(sub_train2[-sub_set,features]))
+paste("LDA accuracy:",mean(LDA_pred$class == Severity[-sub_set])) #0.700904780870219 accuracy
+```
+
+
+
+
+
